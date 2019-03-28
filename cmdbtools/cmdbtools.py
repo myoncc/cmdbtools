@@ -30,6 +30,9 @@ token_command = commands.add_parser('print-access-token', help='Display access t
 login_command.add_argument('-k', '--token', type=str, required=True, dest='token',
                            help='CMDB API access key(Token).')
 
+login_command.add_argument('-u', '--url', type=str, default='https://db.cngb.org/cmdb',
+                           help='url of cmdb.')
+
 annotate_command = commands.add_parser('annotate', help='Annotate input VCF.',
                                        description='Input VCF file. Multi-allelic variant records in input VCF must be '
                                                    'split into multiple bi-allelic variant records.')
@@ -51,10 +54,13 @@ query_variant_command.add_argument('-l', '--positions', metavar='File-contain-a-
                                         'position by -c and -p or using -l for multiple poisitions in a single file, '
                                         'could be .gz file',
                                    default=None)
+query_variant_command.add_argument('-u', '--url', type=str, default='https://db.cngb.org/cmdb',
+                           help='url of cmdb.')
 # query_variant_command.add_argument('-v', '--variant', metavar='chrom-pos-ref-alt/rs#', type=str, dest='variant_id',
 #                                    help='Variant identifier CHROM-POS-REF-ALT or rs#.')
 # query_variant_command.add_argument('-o', '--output', required=False, choices=['json', 'vcf'], default='json',
 #                                    dest='format', help='Output format.')
+args = argparser.parse_args()
 
 USER_HOME = os.path.expanduser("~")
 CMDB_DIR = '.cmdb'
@@ -62,7 +68,7 @@ CMDB_TOKENSTORE = 'authaccess.yaml'
 
 CMDB_DATASET_VERSION = 'CMDB_hg19_v1.0'
 CMDB_API_VERSION = 'v1.0'
-CMDB_API_MAIN_URL = 'https://db.cngb.org/cmdb/api/{}'.format(CMDB_API_VERSION)
+CMDB_API_MAIN_URL = args.url + '/api/{}'.format(CMDB_API_VERSION)
 
 CMDB_VCF_HEADER = [
     '##fileformat=VCFv4.2',
@@ -182,10 +188,10 @@ def write_tokenstore(token):
 
 def login(token):
     # Test the token is available or not
-    test_url = "https://db.cngb.org/cmdb/api/v1.0/variant?token={}&type=position&query=chr17-41234470".format(token)
+    test_url = args.url + "/api/v1.0/variant?token={}&type=position&query=chr17-41234470".format(token)
     cmdb_response = Requests.get(test_url)
 
-    if cmdb_response.status_code != 201:
+    if cmdb_response.status_code == 403:
         raise CMDBException('Error while obtaining your token with CMDB API authentication server.'
                             'You may do not have the API access or the token is wrong.\n')
 

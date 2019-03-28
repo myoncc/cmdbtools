@@ -20,6 +20,8 @@ from urllib2 import Request, urlopen, HTTPError
 if sys.version_info.major != 2:
     raise Exception('This tool supports only python2')
 
+CMDB_OFFICIAL_URL = 'https://db.cngb.org/cmdb'
+
 argparser = argparse.ArgumentParser(description='Manage authentication for CMDB API and do querying from command line.')
 commands = argparser.add_subparsers(dest='command', title='Commands')
 
@@ -29,6 +31,9 @@ token_command = commands.add_parser('print-access-token', help='Display access t
 
 login_command.add_argument('-k', '--token', type=str, required=True, dest='token',
                            help='CMDB API access key(Token).')
+
+login_command.add_argument('-u', '--url', type=str, default=CMDB_OFFICIAL_URL,
+                           help='url of cmdb.')
 
 annotate_command = commands.add_parser('annotate', help='Annotate input VCF.',
                                        description='Input VCF file. Multi-allelic variant records in input VCF must be '
@@ -62,7 +67,6 @@ CMDB_TOKENSTORE = 'authaccess.yaml'
 
 CMDB_DATASET_VERSION = 'CMDB_hg19_v1.0'
 CMDB_API_VERSION = 'v1.0'
-CMDB_API_MAIN_URL = 'https://db.cngb.org/cmdb/api/{}'.format(CMDB_API_VERSION)
 
 CMDB_VCF_HEADER = [
     '##fileformat=VCFv4.2',
@@ -168,11 +172,12 @@ def read_tokenstore():
         return tokenstore
 
 
-def write_tokenstore(token):
+def write_tokenstore(token, url=None):
     file_path = os.path.join(USER_HOME, CMDB_DIR, CMDB_TOKENSTORE)
     with open(file_path, 'w') as tokenstore:
         token_obj = {
             "access_token": token,
+            "url": url,
             "version": CMDB_DATASET_VERSION
         }
         yaml.dump(token_obj, tokenstore)
@@ -180,19 +185,20 @@ def write_tokenstore(token):
     os.chmod(file_path, 0600)
 
 
-def login(token):
+def login(token, url=CMDB_OFFICIAL_URL):
     # Test the token is available or not
-    test_url = "https://db.cngb.org/cmdb/api/v1.0/variant?token={}&type=position&query=chr17-41234470".format(token)
+    args = argparser.parse_args()
+    test_url = args.url + "/api/v1.0/variant?token={}&type=position&query=chr17-41234470".format(token)
     cmdb_response = Requests.get(test_url)
 
-    if cmdb_response.status_code != 201:
+    if cmdb_response.status_code != 201 and cmdb_response.status_code != 404:
         raise CMDBException('Error while obtaining your token with CMDB API authentication server.'
                             'You may do not have the API access or the token is wrong.\n')
 
     if not authaccess_exists():
         create_tokenstore()
 
-    write_tokenstore(token)
+    write_tokenstore(token, url)
     sys.stdout.write("Done.\nYou are signed in now.\n")
 
     return
@@ -268,9 +274,15 @@ def query_variant(chromosome, position):
     if chromosome is None or position is None:
         raise CMDBException('Provide both "-c,--chromosome" and "-p,--position".')
 
-    query_url = '{}/variant?&type=position&query={}-{}'.format(CMDB_API_MAIN_URL, chromosome, position)
+    query_url = '{}/variant?&type=position&query={}-{}'.format(get_cmdb_main_url(), chromosome, position)
     return _query_nonpaged(tokenstore["access_token"], query_url)
 
+def get_cmdb_main_url ():
+    url = CMDB_OFFICIAL_URL
+    if authaccess_exists():
+        token_store = read_tokenstore()
+        url = token_store.get('url') or CMDB_OFFICIAL_URL
+    return url + '/api/{}'.format(CMDB_API_VERSION)
 
 def annotate(infile, filter=None):
     if not authaccess_exists():
@@ -391,7 +403,7 @@ def main():
     args = argparser.parse_args()
     try:
         if args.command == 'login':
-            login(args.token)
+            login(args.token, args.url)
 
         elif args.command == 'logout':
             logout()
